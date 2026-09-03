@@ -4,8 +4,21 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<!-- Versions come from ArchiSteamFarm's own Directory.Packages.props (imported via the repo-root Directory.Packages.props). -->
+		<!--
+			Versions come from ArchiSteamFarm's own Directory.Packages.props
+			(imported via the repo-root Directory.Packages.props).
+
+			JetBrains.Annotations.Sources and Microsoft.AspNetCore.OpenApi
+			are not used by our code directly, but ASF's shared build
+			settings run an OpenApi XML-comment source generator against
+			every project - without these two references the generated
+			code fails to compile (CS0246/CS0234 on OpenApiSchema and
+			friends), exactly like in ExamplePlugin.csproj and
+			ASF-PluginTemplate's MyAwesomePlugin.csproj.
+		-->
 		<PackageReference Include="AngleSharp" IncludeAssets="compile" />
+		<PackageReference Include="JetBrains.Annotations.Sources" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.AspNetCore.OpenApi" IncludeAssets="compile" />
 		<PackageReference Include="SteamKit2" IncludeAssets="compile" />
 		<PackageReference Include="System.Composition.AttributedModel" IncludeAssets="compile" />
 	</ItemGroup>
