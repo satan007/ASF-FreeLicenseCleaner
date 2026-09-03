@@ -1,5 +1,7 @@
 # ASF-FreeLicenseCleaner
 
+[![CI](https://github.com/satan007/ASF-FreeLicenseCleaner/actions/workflows/ci.yml/badge.svg)](https://github.com/satan007/ASF-FreeLicenseCleaner/actions/workflows/ci.yml)
+
 Плагин [ArchiSteamFarm](https://github.com/JustArchiNET/ArchiSteamFarm) (ASF),
 который сам находит и удаляет бесплатные ("on demand") лицензии Steam —
 по одной, с паузами, без внешних скриптов и IPC.
@@ -36,13 +38,31 @@
   версий, что закреплены в `Directory.Packages.props` самой ASF.
 
 Собрать этот плагин целиком (со ссылкой на реальный `ArchiSteamFarm.csproj`,
-подключённый ниже как submodule) в CI-песочнице не вышло: сама ASF на
-этом теге требует ещё не выпущенных preview-фич компилятора C#
-(`[with(...)]` в коллекционных литералах) — это ограничение тулчейна, не
-проблема плагина. Финальную сборку нужно делать на машине с подходящим
-.NET SDK, см. ниже.
+подключённый ниже как submodule) в песочнице, где писался этот плагин, не
+вышло: с SDK `10.0.111` из apt-репозитория Ubuntu сама ASF на этом теге не
+компилируется — `[with(...)]` в коллекционных литералах в её собственном
+коде (`NLog/Targets/HistoryTarget.cs` и др.) требует более новой сборки
+компилятора C#, чем оказалась в этом пакете. При этом собственный CI
+JustArchiNET собирает этот же тег через `actions/setup-dotnet` с обычным
+`dotnet-version: 10.0` (без preview-квалификатора) — то есть, скорее всего,
+дело именно в устаревшем apt-пакете, а не в реальной потребности в
+недо-выпущенном тулчейне. Смотрите бейдж CI выше и вкладку
+[Actions](../../actions) — они сами покажут, собирается ли текущий код на
+официальных раннерах GitHub.
 
-## Сборка
+## Готовые сборки
+
+- **Автоматически на каждый пуш/PR** — workflow [`CI`](.github/workflows/ci.yml)
+  собирает Debug и Release на Ubuntu и Windows и прикладывает Release-сборку
+  как artifact к каждому запуску (вкладка Actions → выбранный run →
+  Artifacts).
+- **Релиз с готовым zip** — запушьте тег вида `v1.0.0`
+  (`git tag v1.0.0 && git push origin v1.0.0`), и workflow
+  [`Release`](.github/workflows/release.yml) сам соберёт Release-конфигурацию
+  и прикрепит `FreeLicenseCleaner.zip` (уже пригодный для
+  `<ASF>/plugins/FreeLicenseCleaner/`) к новому GitHub Release.
+
+## Сборка руками
 
 1. Клонируйте репозиторий вместе с submodule (в нём — ArchiSteamFarm,
    закреплённый на теге `6.3.9.6`):

@@ -1,0 +1,47 @@
+name: CI
+
+on: [pull_request, push, workflow_dispatch]
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_NOLOGO: true
+  DOTNET_SDK_VERSION: '10.0'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+        os: [ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+
+      - name: Verify .NET
+        run: dotnet --info
+
+      - name: Build ${{ matrix.configuration }}
+        run: dotnet build FreeLicenseCleaner -c "${{ matrix.configuration }}" -p:ContinuousIntegrationBuild=true -p:UseAppHost=false --nologo
+
+      - name: Upload build output
+        if: matrix.configuration == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FreeLicenseCleaner-${{ matrix.os }}
+          path: FreeLicenseCleaner/bin/Release/**
+          if-no-files-found: error
