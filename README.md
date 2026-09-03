@@ -103,38 +103,59 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
 ## Настройка
 
 Плагин выключен по умолчанию — включается **на бота**, в его собственном
-конфиге `config/<BotName>.json`:
+конфиге `config/<BotName>.json`. Всё, включая таймеры и лимиты, читается
+оттуда же (`JsonExtensionDataAttribute` — ASF просто передаёт плагину
+любые незнакомые ему ключи) — никакого отдельного файла настроек и
+пересборки не нужно, только правка JSON и перезапуск ASF:
 
 ```json
 {
 	"Enabled": true,
 	"...": "...",
+
 	"FreeLicenseCleanerEnabled": true,
-	"FreeLicenseCleanerDryRun": true
+	"FreeLicenseCleanerDryRun": true,
+	"FreeLicenseCleanerMaxAttempts": 5,
+	"FreeLicenseCleanerSuccessDelaySeconds": 30,
+	"FreeLicenseCleanerRateLimitDelaySeconds": 660,
+	"FreeLicenseCleanerErrorDelaySeconds": 30,
+	"FreeLicenseCleanerIdleDelaySeconds": 300,
+	"FreeLicenseCleanerFullScanIntervalMinutes": 1440,
+	"FreeLicenseCleanerStorePageDelayMilliseconds": 500,
+	"FreeLicenseCleanerMaxStorePages": 1000
 }
 ```
 
-`FreeLicenseCleanerDryRun` по умолчанию `true` — плагин только логирует,
-что бы он удалил, ничего реально не трогая. Проверьте лог/`flc status`,
+Все ключи опциональны — что не указано, остаётся с дефолтом (см. таблицу).
+Значение с неверным типом или `<= 0` для чисел просто игнорируется (в лог
+уйдёт warning), дефолт не ломается.
+
+| Ключ | По умолчанию | Что означает |
+|---|---|---|
+| `FreeLicenseCleanerEnabled` | `false` | Включить плагин для этого бота |
+| `FreeLicenseCleanerDryRun` | `true` | Только логировать, что было бы удалено, ничего не трогая |
+| `FreeLicenseCleanerMaxAttempts` | `5` | Сколько раз ретраить SubID с непонятным статусом, прежде чем навсегда пометить как failed |
+| `FreeLicenseCleanerSuccessDelaySeconds` | `30` | Пауза после успеха / дубликата / invalid_state |
+| `FreeLicenseCleanerRateLimitDelaySeconds` | `660` | Пауза после `RateLimitExceeded` от Steam |
+| `FreeLicenseCleanerErrorDelaySeconds` | `30` | Пауза после сетевой ошибки / нераспознанного статуса |
+| `FreeLicenseCleanerIdleDelaySeconds` | `300` | Пауза, когда очередь пуста и полный скан пока не нужен |
+| `FreeLicenseCleanerFullScanIntervalMinutes` | `1440` | Как часто пересканировать всю страницу лицензий заново |
+| `FreeLicenseCleanerStorePageDelayMilliseconds` | `500` | Пауза между запросами страниц пагинации во время полного скана |
+| `FreeLicenseCleanerMaxStorePages` | `1000` | Предохранитель — максимум страниц пагинации за один скан |
+
+`FreeLicenseCleanerDryRun` по умолчанию `true` — проверьте лог/`flc status`
 и только потом ставьте `false`.
 
-Перезапустите ASF.
+Перезапустите ASF после изменения конфига.
 
 ## Команды бота
 
 Нужен Master-доступ — как и у нативного `rmlicense`.
 
 ```
-flc status   — счётчики очереди (pending/processed/duplicate/...)
+flc status   — счётчики очереди + текущие действующие настройки
 flc scan     — немедленный полный пересканинг licenses-страницы
 ```
-
-## Настройки таймеров
-
-Захардкожены в `FreeLicenseCleaner/CleanerWorker.cs`:
-`SuccessDelaySeconds=30`, `RateLimitDelaySeconds=660`, `ErrorDelaySeconds=30`,
-`FullScanIntervalMinutes=1440`, `MaxAttempts=5`. Поменять — правкой констант
-и пересборкой.
 
 ## Лицензия
 
