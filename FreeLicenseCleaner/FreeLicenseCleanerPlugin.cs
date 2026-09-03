@@ -98,7 +98,7 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 		// Stop a worker left over from a previous init (e.g. config reload)
 		// before possibly starting a new one.
 		if (Workers.TryRemove(bot, out CleanerWorker? previous)) {
-			_ = previous.StopAsync();
+			_ = StopAndDisposeAsync(previous);
 		}
 
 		if (!enabled) {
@@ -118,8 +118,14 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 
 	public async Task OnBotDestroy(Bot bot) {
 		if (Workers.TryRemove(bot, out CleanerWorker? worker)) {
-			await worker.StopAsync().ConfigureAwait(false);
+			await StopAndDisposeAsync(worker).ConfigureAwait(false);
 		}
+	}
+
+	private static async Task StopAndDisposeAsync(CleanerWorker worker) {
+		await worker.StopAsync().ConfigureAwait(false);
+
+		worker.Dispose();
 	}
 
 	public async Task<string?> OnBotCommand(Bot bot, EAccess access, string message, string[] args, ulong steamID = 0) {

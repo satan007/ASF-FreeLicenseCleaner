@@ -24,7 +24,7 @@ namespace FreeLicenseCleaner;
 /// plugin builds from that bot's own config - see
 /// FreeLicenseCleanerPlugin.ConfigKeys.
 /// </summary>
-internal sealed partial class CleanerWorker {
+internal sealed partial class CleanerWorker : IDisposable {
 	private static readonly Uri LicensesUri = new("https://store.steampowered.com/account/licenses/");
 
 	private static string PluginVersion => typeof(CleanerWorker).Assembly.GetName().Version?.ToString() ?? "0";
@@ -48,7 +48,7 @@ internal sealed partial class CleanerWorker {
 	internal void Start() => _loopTask = Task.Run(() => RunLoopAsync(_cts.Token));
 
 	internal async Task StopAsync() {
-		_cts.Cancel();
+		await _cts.CancelAsync().ConfigureAwait(false);
 
 		if (_loopTask == null) {
 			return;
@@ -60,6 +60,8 @@ internal sealed partial class CleanerWorker {
 			// Expected on shutdown.
 		}
 	}
+
+	public void Dispose() => _cts.Dispose();
 
 	internal string GetStatusText() {
 		IReadOnlyDictionary<LicenseStatus, int> stats = _state.Statistics();
