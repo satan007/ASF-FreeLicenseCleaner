@@ -1,11 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
-		<Version>1.0.0</Version>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<!-- Versions come from ArchiSteamFarm's own Directory.Packages.props (central package management). -->
+		<!-- Versions come from ArchiSteamFarm's own Directory.Packages.props (imported via the repo-root Directory.Packages.props). -->
 		<PackageReference Include="AngleSharp" IncludeAssets="compile" />
 		<PackageReference Include="SteamKit2" IncludeAssets="compile" />
 		<PackageReference Include="System.Composition.AttributedModel" IncludeAssets="compile" />
@@ -13,13 +12,21 @@
 
 	<ItemGroup>
 		<!--
-			This assumes the standard ASF-PluginTemplate layout, where the
-			ArchiSteamFarm source is checked out as a git submodule next to
-			this project (see README.md). ExcludeAssets="all" + Private="false"
-			mirrors ASF's own ExamplePlugin.csproj: we compile against ASF's
-			types but do not bundle ASF itself into our output, since the
-			plugin is loaded *into* an already-running ASF process.
+			ArchiSteamFarm is checked out as a git submodule at the repo
+			root (see .gitmodules), so from here it's ..\ArchiSteamFarm\
+			(submodule root) \ArchiSteamFarm\ (the actual project folder
+			inside the ASF repo) \ArchiSteamFarm.csproj - same two-level
+			nesting as ASF-PluginTemplate. ExcludeAssets="all" +
+			Private="false" mirrors ASF's own ExamplePlugin.csproj: we
+			compile against ASF's types but do not bundle ASF itself into
+			our output, since the plugin is loaded *into* an
+			already-running ASF process.
 		-->
-		<ProjectReference Include="..\ArchiSteamFarm\ArchiSteamFarm.csproj" ExcludeAssets="all" Private="false" />
+		<ProjectReference Include="..\ArchiSteamFarm\ArchiSteamFarm\ArchiSteamFarm.csproj" ExcludeAssets="all" Private="false" />
 	</ItemGroup>
+
+	<!-- Convenience for local testing: drop the built plugin straight into the submodule's own ASF binary output. -->
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+		<Copy SourceFolders="$(TargetDir)" DestinationFolder="..\ArchiSteamFarm\ArchiSteamFarm\bin\$(Configuration)\$(TargetFramework)\plugins\$(AssemblyName)\" SkipUnchangedFiles="true" />
+	</Target>
 </Project>
