@@ -1,0 +1,16 @@
+# Build output
+bin/
+obj/
+
+# Runtime state written by the plugin itself
+FreeLicenseCleaner/data/
+**/data/*.json
+
+# IDE
+.vs/
+.idea/
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
