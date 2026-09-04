@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using AngleSharp.Dom;
+using AngleSharp.Html;
 using ArchiSteamFarm.Steam;
 using ArchiSteamFarm.Web.Responses;
 using SteamKit2;
@@ -232,26 +233,27 @@ internal sealed partial class CleanerWorker : IDisposable {
 				throw new InvalidOperationException($"Steam did not return a valid licenses page (page {page}).");
 			}
 
-			foreach (IElement element in document.QuerySelectorAll("[onclick]")) {
-				string? onclick = element.GetAttribute("onclick");
+			// Steam puts the call in href="javascript:RemoveFreeLicense(...)"
+			// on <a class="free_license_remove_link">, not in an onclick
+			// attribute - querying for [onclick] elements (an earlier
+			// version of this code) never matched anything. Scanning the
+			// serialized markup instead, exactly like the original
+			// script's regex-over-raw-HTML approach, is attribute-agnostic
+			// and doesn't depend on guessing Steam's exact markup.
+			using (StringWriter writer = new()) {
+				document.ToHtml(writer, HtmlMarkupFormatter.Instance);
 
-				if (string.IsNullOrEmpty(onclick)) {
-					continue;
+				string html = writer.ToString();
+
+				foreach (Match match in RemoveFreeLicenseRegex().Matches(html)) {
+					uint subID = uint.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+
+					if (!seen.Add(subID)) {
+						continue;
+					}
+
+					licenses.Add(new FreeLicenseCandidate(subID, DecodeLicenseName(match.Groups[2].Value)));
 				}
-
-				Match match = RemoveFreeLicenseRegex().Match(onclick);
-
-				if (!match.Success) {
-					continue;
-				}
-
-				uint subID = uint.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-
-				if (!seen.Add(subID)) {
-					continue;
-				}
-
-				licenses.Add(new FreeLicenseCandidate(subID, DecodeLicenseName(match.Groups[2].Value)));
 			}
 
 			IElement? nextLink = document.QuerySelector("a.license_paginator_next");
