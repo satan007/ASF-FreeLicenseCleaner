@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like "v1.0.0" to build the plugin and attach the ready-to-use
+# Push a tag like "v0.0.1" to build the plugin and attach the ready-to-use
 # output (drop straight into <ASF>/plugins/FreeLicenseCleaner/) to a new
 # GitHub Release.
 on:

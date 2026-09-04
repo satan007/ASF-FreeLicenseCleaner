@@ -56,11 +56,14 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
   собирает Debug и Release на Ubuntu и Windows и прикладывает Release-сборку
   как artifact к каждому запуску (вкладка Actions → выбранный run →
   Artifacts).
-- **Релиз с готовым zip** — запушьте тег вида `v1.0.0`
-  (`git tag v1.0.0 && git push origin v1.0.0`), и workflow
+- **Релиз с готовым zip** — запушьте тег вида `vX.Y.Z`
+  (`git tag v0.0.1 && git push origin v0.0.1`), и workflow
   [`Release`](.github/workflows/release.yml) сам соберёт Release-конфигурацию
   и прикрепит `FreeLicenseCleaner.zip` (уже пригодный для
-  `<ASF>/plugins/FreeLicenseCleaner/`) к новому GitHub Release.
+  `<ASF>/plugins/FreeLicenseCleaner/`) к новому GitHub Release. Версия
+  сейчас `0.0.1` — CI подтверждает только то, что плагин собирается;
+  реальной проверки внутри работающего ASF ещё не было, так что до `1.0.0`
+  говорить рано.
 
 ## Сборка руками
 

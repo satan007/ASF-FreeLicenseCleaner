@@ -3,7 +3,14 @@
 
 	<PropertyGroup>
 		<PluginName>FreeLicenseCleaner</PluginName>
-		<Version>1.0.0.0</Version>
+		<!--
+			0.0.1, not 1.0.0: CI confirms the plugin *compiles* against
+			ASF's real API on Linux/Windows, Debug/Release - it says
+			nothing about whether it actually works. Nobody has run it
+			inside a live ASF process against a real Steam account yet.
+			Bump to 1.0.0 only once that's been done.
+		-->
+		<Version>0.0.1.0</Version>
 	</PropertyGroup>
 
 	<PropertyGroup>
