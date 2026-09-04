@@ -116,13 +116,12 @@ internal sealed class StateStore {
 		}
 	}
 
-	/// <summary>Oldest 'pending' SubID, same ordering as the original script (first_seen, then SubID).</summary>
+	/// <summary>Smallest 'pending' SubID.</summary>
 	internal (uint SubID, LicenseRecord Record)? GetNextPending() {
 		lock (_lock) {
 			KeyValuePair<uint, LicenseRecord> pending = _state.Licenses
 				.Where(pair => pair.Value.Status == LicenseStatus.Pending)
-				.OrderBy(pair => pair.Value.FirstSeenUtc)
-				.ThenBy(pair => pair.Key)
+				.OrderBy(pair => pair.Key)
 				.FirstOrDefault();
 
 			return pending.Value == null ? null : (pending.Key, pending.Value);
