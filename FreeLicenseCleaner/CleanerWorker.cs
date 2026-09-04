@@ -203,10 +203,15 @@ internal sealed partial class CleanerWorker : IDisposable {
 				return TimeSpan.FromSeconds(_options.RateLimitDelaySeconds);
 
 			default:
+				// record is the same LicenseRecord instance stored in
+				// _state.Licenses (StateStore never clones it), so
+				// MarkAttempt() above has already incremented
+				// record.Attempts in place by the time we log it here -
+				// using "+ 1" on top of that double-counts the attempt.
 				_state.MarkAttempt(subID, LicenseStatus.Pending, result.ToString(), false);
 
 				_bot.ArchiLogger.LogGenericWarning(
-					$"Unrecognised RemoveLicense result for SubID {subID}: {result} (attempt {record.Attempts + 1}/{_options.MaxAttempts})"
+					$"Unrecognised RemoveLicense result for SubID {subID}: {result} (attempt {record.Attempts}/{_options.MaxAttempts})"
 				);
 
 				return TimeSpan.FromSeconds(_options.ErrorDelaySeconds);
