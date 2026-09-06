@@ -4,11 +4,13 @@
 	<PropertyGroup>
 		<PluginName>FreeLicenseCleaner</PluginName>
 		<!--
-			0.0.3: confirmed working against a real bot/Steam account
-			(scans and actually removes free licenses). Still pre-1.0 -
-			only lightly exercised so far.
+			Keep this in sync with the git tag pushed for each release
+			(vX.Y.Z -> X.Y.Z.0) - IGitHubPluginUpdates compares this
+			against GitHub release tags to decide whether an update is
+			available, and it's also what "flc status" and ASF's plugin
+			listing show to the user.
 		-->
-		<Version>0.0.3.0</Version>
+		<Version>0.0.4.0</Version>
 	</PropertyGroup>
 
 	<PropertyGroup>

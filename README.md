@@ -60,12 +60,15 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
   собирает Debug и Release на Ubuntu и Windows и прикладывает Release-сборку
   как artifact к каждому запуску (вкладка Actions → выбранный run →
   Artifacts).
-- **Релиз с готовым zip** — запушьте тег вида `vX.Y.Z`
-  (`git tag v0.0.3 && git push origin v0.0.3`), и workflow
-  [`Release`](.github/workflows/release.yml) сам соберёт Release-конфигурацию
-  и прикрепит `FreeLicenseCleaner.zip` (уже пригодный для
-  `<ASF>/plugins/FreeLicenseCleaner/`) к новому GitHub Release. Версия
-  сейчас `0.0.3` — подтверждено, что плагин реально сканирует и удаляет
+- **Релиз с готовым zip** — запушьте тег вида `vX.Y.Z` (например через
+  GitHub → Releases → Draft a new release), не забыв синхронно поднять
+  `<Version>` в `Directory.Build.props` до того же числа (`X.Y.Z.0`) —
+  иначе внутри плагина останется старая версия, хотя тег уже новый. После
+  пуша тега workflow [`Release`](.github/workflows/release.yml) сам
+  соберёт Release-конфигурацию и прикрепит `FreeLicenseCleaner.zip` (уже
+  пригодный для `<ASF>/plugins/FreeLicenseCleaner/`) к новому GitHub
+  Release. Версия сейчас `0.0.4` — подтверждено, что плагин реально
+  сканирует и удаляет
   лицензии на живом боте, но пока это была лишь ограниченная обкатка,
   так что до `1.0.0` ещё рано.
 
