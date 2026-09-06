@@ -23,7 +23,11 @@
   каких-то статусов, чтобы один "залипший" SubID не блокировал всю
   очередь навсегда;
 - состояние (pending/processed/duplicate/invalid_state/failed) хранится в
-  JSON-файле на бота: `plugins/FreeLicenseCleaner/data/<BotName>.json`.
+  JSON-файле на бота: `plugins/FreeLicenseCleaner/data/<BotName>.json`;
+- умеет автообновляться из GitHub Releases этого репозитория
+  (`IGitHubPluginUpdates`) — так же, как это делают другие плагины ASF:
+  ASF сам проверяет новые версии по своему обычному расписанию
+  обновлений, плюс по команде `update`/`updateplugins`.
 
 ## Статус проверки
 

@@ -38,10 +38,17 @@ namespace FreeLicenseCleaner;
 /// Bot commands (Master access, same as native rmlicense):
 ///   flc status   - show current queue counters and effective settings
 ///   flc scan     - trigger an immediate full Steam scan
+///
+/// Implements IGitHubPluginUpdates so ASF checks this plugin for updates
+/// the same way it checks itself (on ASF's usual update schedule, plus
+/// the "update"/"updateplugins" command) - the release.yml workflow
+/// always attaches exactly one FreeLicenseCleaner.zip asset, which
+/// matches ASF's default asset-selection fallback, so no custom
+/// GetTargetReleaseAsset() override is needed.
 /// </summary>
 [Export(typeof(IPlugin))]
 [SuppressMessage("ReSharper", "MemberCanBeFileLocal")]
-internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCommand2 {
+internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCommand2, IGitHubPluginUpdates {
 	private static class ConfigKeys {
 		public const string Enabled = "FreeLicenseCleanerEnabled";
 		public const string DryRun = "FreeLicenseCleanerDryRun";
@@ -65,6 +72,12 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 	public string Name => nameof(FreeLicenseCleanerPlugin);
 
 	public Version Version => typeof(FreeLicenseCleanerPlugin).Assembly.GetName().Version ?? throw new InvalidOperationException(nameof(Version));
+
+	// IGitHubPluginUpdates: ASF compares this against Directory.Build.props's
+	// <Version> and offers/performs an update from this repo's GitHub
+	// Releases, using the same default asset-matching IGitHubPluginUpdates
+	// already provides.
+	public string RepositoryName => "satan007/ASF-FreeLicenseCleaner";
 
 	public Task OnLoaded() {
 		ASF.ArchiLogger.LogGenericInfo(
