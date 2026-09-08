@@ -5,12 +5,14 @@
 		<PluginName>FreeLicenseCleaner</PluginName>
 		<!--
 			Keep this in sync with the git tag pushed for each release
-			(vX.Y.Z -> X.Y.Z.0) - IGitHubPluginUpdates compares this
-			against GitHub release tags to decide whether an update is
-			available, and it's also what "flc status" and ASF's plugin
-			listing show to the user.
+			(tag X.Y.Z -> X.Y.Z.0). IGitHubPluginUpdates does
+			`new Version(releaseTag)` on the raw GitHub release tag with
+			no prefix handling, so the tag must be a bare "X.Y.Z" - NOT
+			"vX.Y.Z" (that crashes ASF's update check with
+			"The input string 'v0' was not in a correct format.", see
+			README). ASF's own release tags never carry a "v" either.
 		-->
-		<Version>0.0.4.0</Version>
+		<Version>0.0.5.0</Version>
 	</PropertyGroup>
 
 	<PropertyGroup>

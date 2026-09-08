@@ -1,12 +1,19 @@
 name: Release
 
-# Push a tag like "v0.0.1" to build the plugin and attach the ready-to-use
-# output (drop straight into <ASF>/plugins/FreeLicenseCleaner/) to a new
-# GitHub Release.
+# Push a tag like "0.0.5" (NO leading "v" - see README) to build the
+# plugin and attach the ready-to-use output (drop straight into
+# <ASF>/plugins/FreeLicenseCleaner/) to a new GitHub Release.
+#
+# The "v" prefix matters here: ArchiSteamFarm's IGitHubPluginUpdates does
+# `new Version(releaseTag)` with no prefix handling, so a "v0.0.5" tag
+# makes ASF's own auto-update check crash with
+# "System.FormatException: The input string 'v0' was not in a correct
+# format." ASF's own release tags (e.g. "6.3.9.6") never carry a "v",
+# and neither should ours.
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - '*.*.*'
   workflow_dispatch:
 
 env:
