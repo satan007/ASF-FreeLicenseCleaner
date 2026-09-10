@@ -25,6 +25,9 @@
 - можно защитить конкретные SubID от удаления списком исключений
   (`FreeLicenseCleanerExcludeSubIds`) — на случай, если среди
   "удаляемых" Steam окажется что-то, что вы хотите оставить;
+- можно защитить всё, во что реально играли — `FreeLicenseCleanerMinPlaytimeToExcludeMinutes`
+  сверяет playtime (через Steam) и содержимое пакета (через PICS, как
+  делает сама ASF) и не трогает то, что наиграно больше порога;
 - состояние (pending/processed/duplicate/invalid_state/invalid_param/
   excluded/failed) хранится в JSON-файле на бота:
   `plugins/FreeLicenseCleaner/data/<BotName>.json`;
@@ -82,7 +85,7 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
   После пуша тега workflow [`Release`](.github/workflows/release.yml) сам
   соберёт Release-конфигурацию и прикрепит `FreeLicenseCleaner.zip` (уже
   пригодный для `<ASF>/plugins/FreeLicenseCleaner/`) к новому GitHub
-  Release. Версия сейчас `0.0.6` — подтверждено, что плагин реально
+  Release. Версия сейчас `0.0.7` — подтверждено, что плагин реально
   сканирует и удаляет лицензии на живом боте, но пока это была лишь
   ограниченная обкатка, так что до `1.0.0` ещё рано.
 
@@ -147,13 +150,16 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
 	"FreeLicenseCleanerFullScanIntervalMinutes": 1440,
 	"FreeLicenseCleanerStorePageDelayMilliseconds": 500,
 	"FreeLicenseCleanerMaxStorePages": 1000,
-	"FreeLicenseCleanerExcludeSubIds": [12345, 67890]
+	"FreeLicenseCleanerExcludeSubIds": [12345, 67890],
+	"FreeLicenseCleanerMinPlaytimeToExcludeMinutes": 0
 }
 ```
 
 Все ключи опциональны — что не указано, остаётся с дефолтом (см. таблицу).
 Значение с неверным типом или `<= 0` для чисел просто игнорируется (в лог
-уйдёт warning), дефолт не ломается.
+уйдёт warning), дефолт не ломается. Исключение — `MinPlaytimeToExcludeMinutes`:
+там допустим и `0` (это и есть "выключено"), отвергается только
+отрицательное значение.
 
 | Ключ | По умолчанию | Что означает |
 |---|---|---|
@@ -168,9 +174,25 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
 | `FreeLicenseCleanerStorePageDelayMilliseconds` | `500` | Пауза между запросами страниц пагинации во время полного скана |
 | `FreeLicenseCleanerMaxStorePages` | `1000` | Предохранитель — максимум страниц пагинации за один скан |
 | `FreeLicenseCleanerExcludeSubIds` | `[]` | SubID, которые никогда не будут удалены, даже если Steam помечает их как удаляемые |
+| `FreeLicenseCleanerMinPlaytimeToExcludeMinutes` | `0` | `0` — выключено. `1` — защищать всё, во что хоть раз заходили. `30` — защищать всё, во что играли 30+ минут |
 
 `FreeLicenseCleanerDryRun` по умолчанию `true` — проверьте лог/`flc status`
 и только потом ставьте `false`.
+
+### Про `MinPlaytimeToExcludeMinutes`
+
+Проверяется **не на каждой попытке удаления**, а раз за полный скан (по
+умолчанию — раз в сутки, либо сразу при `flc scan`) — чтобы не дёргать
+Steam-запросами лишний раз. Механизм: берём реальный playtime всех ваших
+игр через Steam (`playtime_forever`), для каждого ожидающего удаления
+SubID через PICS узнаём, какие AppID в него входят (тот же механизм,
+которым пользуется сама ASF), и если у любого из них playtime достиг
+порога — весь пакет помечается как `excluded` и больше не трогается.
+
+Если ASF ещё не успела получить access token на какой-то пакет (редкий
+случай, обычно сразу после того как лицензия впервые появилась) — в этом
+цикле он просто не проверяется и остаётся pending; проверится на
+следующем скане.
 
 Перезапустите ASF после изменения конфига.
 

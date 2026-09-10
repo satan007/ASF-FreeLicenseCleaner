@@ -34,6 +34,7 @@ namespace FreeLicenseCleaner;
 ///   "FreeLicenseCleanerStorePageDelayMilliseconds": 500
 ///   "FreeLicenseCleanerMaxStorePages": 1000
 ///   "FreeLicenseCleanerExcludeSubIds": [12345, 67890]
+///   "FreeLicenseCleanerMinPlaytimeToExcludeMinutes": 0   (0 = off; 1 = protect anything ever launched)
 /// Anything omitted keeps its default from <see cref="CleanerOptions"/>.
 ///
 /// Bot commands (Master access, same as native rmlicense):
@@ -64,6 +65,7 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 		public const string StorePageDelayMilliseconds = "FreeLicenseCleanerStorePageDelayMilliseconds";
 		public const string MaxStorePages = "FreeLicenseCleanerMaxStorePages";
 		public const string ExcludeSubIds = "FreeLicenseCleanerExcludeSubIds";
+		public const string MinPlaytimeToExcludeMinutes = "FreeLicenseCleanerMinPlaytimeToExcludeMinutes";
 	}
 
 	private static readonly ConcurrentDictionary<Bot, CleanerWorker> Workers = new();
@@ -111,6 +113,7 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 			ApplyInt(additionalConfigProperties, ConfigKeys.StorePageDelayMilliseconds, bot, value => options.StorePageDelayMilliseconds = value);
 			ApplyInt(additionalConfigProperties, ConfigKeys.MaxStorePages, bot, value => options.MaxStorePages = value);
 			ApplyUintSet(additionalConfigProperties, ConfigKeys.ExcludeSubIds, bot, value => options.ExcludeSubIds = value);
+			ApplyNonNegativeInt(additionalConfigProperties, ConfigKeys.MinPlaytimeToExcludeMinutes, bot, value => options.MinPlaytimeToExcludeMinutes = value);
 		}
 
 		// Stop a worker left over from a previous init (e.g. config reload)
@@ -192,6 +195,21 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 
 		if ((element.ValueKind != JsonValueKind.Number) || !element.TryGetInt32(out int value) || (value <= 0)) {
 			bot.ArchiLogger.LogGenericWarning($"Ignoring invalid value for \"{key}\" - expected a positive integer, keeping the default.");
+
+			return;
+		}
+
+		setter(value);
+	}
+
+	/// <summary>Like <see cref="ApplyInt"/>, but allows 0 (used for knobs where 0 means "feature off").</summary>
+	private static void ApplyNonNegativeInt(IReadOnlyDictionary<string, JsonElement> properties, string key, Bot bot, Action<int> setter) {
+		if (!properties.TryGetValue(key, out JsonElement element)) {
+			return;
+		}
+
+		if ((element.ValueKind != JsonValueKind.Number) || !element.TryGetInt32(out int value) || (value < 0)) {
+			bot.ArchiLogger.LogGenericWarning($"Ignoring invalid value for \"{key}\" - expected a non-negative integer, keeping the default.");
 
 			return;
 		}

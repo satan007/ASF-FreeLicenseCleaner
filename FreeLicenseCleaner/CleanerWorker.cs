@@ -9,9 +9,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using AngleSharp.Dom;
 using AngleSharp.Html;
+using ArchiSteamFarm.Core;
 using ArchiSteamFarm.Steam;
 using ArchiSteamFarm.Web.Responses;
 using SteamKit2;
+using SteamKit2.Internal;
 
 namespace FreeLicenseCleaner;
 
@@ -93,7 +95,7 @@ internal sealed partial class CleanerWorker : IDisposable {
 
 		StringBuilder sb = new();
 
-		void AppendSection(string label, LicenseStatus status, int limit) {
+		void AppendSection(string label, LicenseStatus status, int limit, bool includeReason = false) {
 			List<(uint SubID, LicenseRecord Record)> items = _state.GetByStatus(status, limit + 1);
 
 			if (items.Count == 0) {
@@ -114,7 +116,12 @@ internal sealed partial class CleanerWorker : IDisposable {
 
 			sb.Append("): ");
 
-			sb.AppendJoin(", ", items.Select(item => $"{item.SubID} ({item.Record.Name})"));
+			sb.AppendJoin(
+				", ",
+				items.Select(item => includeReason
+					? $"{item.SubID} ({item.Record.Name}) [{item.Record.LastResult}]"
+					: $"{item.SubID} ({item.Record.Name})")
+			);
 
 			sb.Append('\n');
 		}
@@ -122,7 +129,7 @@ internal sealed partial class CleanerWorker : IDisposable {
 		AppendSection("Pending", LicenseStatus.Pending, pendingPreview);
 		AppendSection("Invalid state", LicenseStatus.InvalidState, terminalPreview);
 		AppendSection("Invalid param", LicenseStatus.InvalidParam, terminalPreview);
-		AppendSection("Excluded", LicenseStatus.Excluded, terminalPreview);
+		AppendSection("Excluded", LicenseStatus.Excluded, terminalPreview, true);
 		AppendSection("Failed (max attempts)", LicenseStatus.FailedMaxAttempts, terminalPreview);
 
 		return sb.Length > 0 ? sb.ToString().TrimEnd('\n') : "Nothing tracked yet - run \"flc scan\" first.";
@@ -138,6 +145,8 @@ internal sealed partial class CleanerWorker : IDisposable {
 	internal async Task<string> TriggerFullScanAsync() {
 		try {
 			int added = await PerformFullScanAsync("manual trigger").ConfigureAwait(false);
+
+			await RefreshPlaytimeProtectionAsync().ConfigureAwait(false);
 
 			return $"Full scan complete, {added} new license(s) added. {GetStatusText()}";
 		} catch (Exception e) {
@@ -161,6 +170,7 @@ internal sealed partial class CleanerWorker : IDisposable {
 
 					if (scanRequired) {
 						await PerformFullScanAsync(reason).ConfigureAwait(false);
+						await RefreshPlaytimeProtectionAsync().ConfigureAwait(false);
 					}
 
 					delay = await ProcessOnePendingAsync().ConfigureAwait(false);
@@ -291,6 +301,187 @@ internal sealed partial class CleanerWorker : IDisposable {
 
 				return TimeSpan.FromSeconds(_options.ErrorDelaySeconds);
 		}
+	}
+
+	/// <summary>
+	/// Protects packages with real playtime from removal. Runs once per
+	/// full scan (not per removal attempt, to avoid an extra Steam
+	/// round-trip on every single item): fetches the bot's owned-games
+	/// playtime by appID, resolves which appIDs each pending package
+	/// contains via PICS, and permanently marks any pending package whose
+	/// playtime meets <see cref="CleanerOptions.MinPlaytimeToExcludeMinutes"/>
+	/// as Excluded. A package Steam hasn't handed ASF an access token for
+	/// yet (unusual, but possible right after a license first appears)
+	/// simply isn't checked this cycle - it stays pending and gets
+	/// re-evaluated on the next scan.
+	/// </summary>
+	private async Task RefreshPlaytimeProtectionAsync() {
+		if (_options.MinPlaytimeToExcludeMinutes <= 0) {
+			return;
+		}
+
+		List<(uint SubID, LicenseRecord Record)> pending = _state.GetByStatus(LicenseStatus.Pending);
+
+		if (pending.Count == 0) {
+			return;
+		}
+
+		Dictionary<uint, int>? playtimeByAppId = await GetOwnedPlaytimeByAppIdAsync().ConfigureAwait(false);
+
+		if (playtimeByAppId == null) {
+			_bot.ArchiLogger.LogGenericWarning("Could not fetch owned games' playtime - playtime protection skipped for this cycle.");
+
+			return;
+		}
+
+		Dictionary<uint, HashSet<uint>>? appIdsByPackage = await GetAppIdsByPackagesAsync(pending.Select(item => item.SubID).ToHashSet()).ConfigureAwait(false);
+
+		if (appIdsByPackage == null) {
+			_bot.ArchiLogger.LogGenericWarning("Could not resolve package contents - playtime protection skipped for this cycle.");
+
+			return;
+		}
+
+		int protectedCount = 0;
+
+		foreach ((uint subID, LicenseRecord record) in pending) {
+			if (!appIdsByPackage.TryGetValue(subID, out HashSet<uint>? appIDs) || (appIDs.Count == 0)) {
+				continue;
+			}
+
+			int maxPlaytime = 0;
+
+			foreach (uint appID in appIDs) {
+				if (playtimeByAppId.TryGetValue(appID, out int playtime) && (playtime > maxPlaytime)) {
+					maxPlaytime = playtime;
+				}
+			}
+
+			if (maxPlaytime < _options.MinPlaytimeToExcludeMinutes) {
+				continue;
+			}
+
+			_state.MarkAttempt(
+				subID,
+				LicenseStatus.Excluded,
+				$"played {maxPlaytime} min >= threshold {_options.MinPlaytimeToExcludeMinutes} min",
+				true
+			);
+
+			_bot.ArchiLogger.LogGenericInfo($"SubID {subID} ({record.Name}) has {maxPlaytime} min playtime and will not be removed.");
+
+			protectedCount++;
+		}
+
+		if (protectedCount > 0) {
+			_bot.ArchiLogger.LogGenericInfo($"Playtime protection excluded {protectedCount} package(s) with real playtime from removal.");
+		}
+	}
+
+	/// <summary>Owned appID -> playtime_forever (minutes), straight from Steam's Player_GetOwnedGames unified message (ASF's own GetOwnedGames() wrapper discards playtime, so we call the service ourselves).</summary>
+	private async Task<Dictionary<uint, int>?> GetOwnedPlaytimeByAppIdAsync() {
+		SteamUnifiedMessages? unifiedMessages = _bot.GetHandler<SteamUnifiedMessages>();
+
+		if (unifiedMessages == null) {
+			return null;
+		}
+
+		Player playerService = unifiedMessages.CreateService<Player>();
+
+		CPlayer_GetOwnedGames_Request request = new() {
+			steamid = _bot.SteamID,
+			include_appinfo = false,
+			include_free_sub = true,
+			include_played_free_games = true,
+			skip_unvetted_apps = false
+		};
+
+		SteamUnifiedMessages.ServiceMethodResponse<CPlayer_GetOwnedGames_Response> response;
+
+		try {
+			response = await playerService.GetOwnedGames(request).ToLongRunningTask().ConfigureAwait(false);
+		} catch (Exception e) {
+			_bot.ArchiLogger.LogGenericWarningException(e);
+
+			return null;
+		}
+
+		if (response.Result != EResult.OK) {
+			return null;
+		}
+
+		Dictionary<uint, int> result = new();
+
+		foreach (CPlayer_GetOwnedGames_Response.Game game in response.Body.games) {
+			result[(uint) game.appid] = game.playtime_forever;
+		}
+
+		return result;
+	}
+
+	/// <summary>
+	/// Package -> app IDs it contains, via PICS - the same mechanism ASF
+	/// itself uses internally (Bot.GetPackagesData()). Only queries
+	/// packages for which ASF has already resolved an access token,
+	/// mirroring ASF's own behaviour of skipping tokenless packages
+	/// rather than guessing.
+	/// </summary>
+	private async Task<Dictionary<uint, HashSet<uint>>?> GetAppIdsByPackagesAsync(IReadOnlyCollection<uint> packageIDs) {
+		if (ASF.GlobalDatabase == null) {
+			return null;
+		}
+
+		HashSet<SteamApps.PICSRequest> packageRequests = new();
+
+		foreach (uint packageID in packageIDs) {
+			if (ASF.GlobalDatabase.PackageAccessTokensReadOnly.TryGetValue(packageID, out ulong token)) {
+				packageRequests.Add(new SteamApps.PICSRequest(packageID, token));
+			}
+		}
+
+		if (packageRequests.Count == 0) {
+			return new Dictionary<uint, HashSet<uint>>();
+		}
+
+		AsyncJobMultiple<SteamApps.PICSProductInfoCallback>.ResultSet? resultSet;
+
+		try {
+			resultSet = await _bot.SteamApps.PICSGetProductInfo([], packageRequests).ToLongRunningTask().ConfigureAwait(false);
+		} catch (Exception e) {
+			_bot.ArchiLogger.LogGenericWarningException(e);
+
+			return null;
+		}
+
+		if (resultSet?.Results == null) {
+			return null;
+		}
+
+		Dictionary<uint, HashSet<uint>> result = new();
+
+		foreach (SteamApps.PICSProductInfoCallback.PICSProductInfo productInfo in resultSet.Results.SelectMany(static productInfoResult => productInfoResult.Packages).Where(static pair => pair.Key != 0).Select(static pair => pair.Value)) {
+			if (productInfo.KeyValues == KeyValue.Invalid) {
+				continue;
+			}
+
+			KeyValue appIDsKv = productInfo.KeyValues["appids"];
+
+			if (appIDsKv == KeyValue.Invalid) {
+				continue;
+			}
+
+			HashSet<uint> appIDs = new();
+
+			foreach (string? appIDText in appIDsKv.Children.Select(static app => app.Value)) {
+				if (uint.TryParse(appIDText, out uint appID) && (appID != 0)) {
+					appIDs.Add(appID);
+				}
+			}
+
+			result[productInfo.ID] = appIDs;
+		}
+
+		return result;
 	}
 
 	private async Task<int> PerformFullScanAsync(string reason) {

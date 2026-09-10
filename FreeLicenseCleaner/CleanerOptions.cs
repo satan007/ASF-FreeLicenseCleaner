@@ -18,6 +18,16 @@ internal sealed class CleanerOptions {
 	/// </summary>
 	public HashSet<uint> ExcludeSubIds { get; set; } = new();
 
+	/// <summary>
+	/// If &gt; 0, a pending package is protected from removal once any app
+	/// it contains has real Steam playtime (in minutes) at or above this
+	/// number - set to 1 to protect anything ever launched, or e.g. 30 to
+	/// only protect packages played for half an hour or more. 0 (default)
+	/// disables the check entirely, so no extra Steam calls are made.
+	/// Re-evaluated once per full scan, not per removal attempt.
+	/// </summary>
+	public int MinPlaytimeToExcludeMinutes { get; set; }
+
 	/// <summary>Retries allowed for a SubID before it's permanently marked as failed.</summary>
 	public int MaxAttempts { get; set; } = 5;
 
