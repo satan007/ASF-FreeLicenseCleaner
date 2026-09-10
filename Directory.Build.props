@@ -12,7 +12,7 @@
 			"The input string 'v0' was not in a correct format.", see
 			README). ASF's own release tags never carry a "v" either.
 		-->
-		<Version>0.0.7.0</Version>
+		<Version>0.0.9.0</Version>
 	</PropertyGroup>
 
 	<PropertyGroup>

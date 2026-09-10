@@ -29,7 +29,8 @@ internal sealed class LicenseRecord {
 
 /// <summary>Whole persisted state for one bot, serialized as-is to JSON.</summary>
 internal sealed class CleanerState {
-	public string? PluginVersion { get; set; }
+	/// <summary>CleanerWorker.ScanLogicVersion as of the last full scan - NOT the plugin's release version, see there.</summary>
+	public string? ScanLogicVersion { get; set; }
 	public DateTime? LastFullScanUtc { get; set; }
 	public Dictionary<uint, LicenseRecord> Licenses { get; set; } = new();
 }

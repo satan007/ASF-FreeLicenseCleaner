@@ -61,12 +61,12 @@ internal sealed class StateStore {
 		File.Move(tempPath, _filePath, true);
 	}
 
-	internal (bool Required, string Reason) FullScanRequired(string pluginVersion, int intervalMinutes) {
+	internal (bool Required, string Reason) FullScanRequired(string scanLogicVersion, int intervalMinutes) {
 		lock (_lock) {
-			if (_state.PluginVersion != pluginVersion) {
-				string reason = _state.PluginVersion == null
+			if (_state.ScanLogicVersion != scanLogicVersion) {
+				string reason = _state.ScanLogicVersion == null
 					? "no previous scan"
-					: $"plugin version changed {_state.PluginVersion} -> {pluginVersion}";
+					: $"scan logic changed {_state.ScanLogicVersion} -> {scanLogicVersion}";
 
 				return (true, reason);
 			}
@@ -81,9 +81,9 @@ internal sealed class StateStore {
 		}
 	}
 
-	internal void MarkFullScan(string pluginVersion) {
+	internal void MarkFullScan(string scanLogicVersion) {
 		lock (_lock) {
-			_state.PluginVersion = pluginVersion;
+			_state.ScanLogicVersion = scanLogicVersion;
 			_state.LastFullScanUtc = DateTime.UtcNow;
 
 			SaveUnlocked();

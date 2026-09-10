@@ -31,7 +31,17 @@ namespace FreeLicenseCleaner;
 internal sealed partial class CleanerWorker : IDisposable {
 	private static readonly Uri LicensesUri = new("https://store.steampowered.com/account/licenses/");
 
-	private static string PluginVersion => typeof(CleanerWorker).Assembly.GetName().Version?.ToString() ?? "0";
+	// Deliberately NOT typeof(CleanerWorker).Assembly.GetName().Version:
+	// that changes on every release (the plugin now has real auto-update,
+	// so it bumps often), and a mismatch forces a full ~500+ page Steam
+	// rescan - so tying it to the assembly version meant "updated the
+	// plugin" silently became "rescan everything again", which looked
+	// like prior progress had been wiped (it hadn't - AddMany() never
+	// resets an existing record's status, only refreshes its name).
+	// Bump this constant by hand only when PerformFullScanAsync's actual
+	// scanning/parsing logic changes and old cached results might need a
+	// fresh look (e.g. the href-vs-onclick fix would have warranted it).
+	private const string ScanLogicVersion = "2";
 
 	private readonly Bot _bot;
 	private readonly CleanerOptions _options;
@@ -166,7 +176,7 @@ internal sealed partial class CleanerWorker : IDisposable {
 				if (!_bot.IsConnectedAndLoggedOn) {
 					delay = TimeSpan.FromSeconds(_options.ErrorDelaySeconds);
 				} else {
-					(bool scanRequired, string reason) = _state.FullScanRequired(PluginVersion, _options.FullScanIntervalMinutes);
+					(bool scanRequired, string reason) = _state.FullScanRequired(ScanLogicVersion, _options.FullScanIntervalMinutes);
 
 					if (scanRequired) {
 						await PerformFullScanAsync(reason).ConfigureAwait(false);
@@ -543,7 +553,7 @@ internal sealed partial class CleanerWorker : IDisposable {
 
 		int newCount = _state.AddMany(licenses);
 
-		_state.MarkFullScan(PluginVersion);
+		_state.MarkFullScan(ScanLogicVersion);
 
 		_bot.ArchiLogger.LogGenericInfo(
 			$"Full scan complete. Pages: {page} | Free candidates: {licenses.Count} | New: {newCount} | {GetStatusText()}"

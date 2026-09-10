@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Composition;
 using System.IO;
-using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ArchiSteamFarm.Core;
@@ -70,9 +69,36 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 
 	private static readonly ConcurrentDictionary<Bot, CleanerWorker> Workers = new();
 
+	/// <summary>
+	/// Deliberately NOT inside this plugin's own folder
+	/// (plugins/FreeLicenseCleaner/) - ASF's plugin auto-update applies a
+	/// new release by moving the ENTIRE current contents of that folder
+	/// into a backup directory and then dropping the freshly extracted
+	/// release files in its place (see ArchiSteamFarm.Core.Utilities.
+	/// UpdateFromArchive/MoveAllUpdateFiles). Only a handful of
+	/// specifically-named subdirectories are exempted from that move
+	/// (SharedInfo.ConfigDirectory/ArchivalLogsDirectory/DebugDirectory/
+	/// PluginsDirectory/UpdateDirectoryNew/UpdateDirectoryOld) - a
+	/// same-named "data" subfolder is NOT one of them, so it used to get
+	/// swept into the backup directory on every update and never restored
+	/// (the release zip ships no "data" folder), silently discarding all
+	/// accumulated history. Storing state under ASF's own top-level
+	/// SharedInfo.ConfigDirectory ("config/") instead sidesteps that
+	/// mechanism entirely: that folder belongs to ASF itself, is never
+	/// touched by a plugin's own update, and survives ASF's own
+	/// self-updates too. Directory.GetCurrentDirectory() is used rather
+	/// than AppContext.BaseDirectory/Assembly.Location because ASF sets
+	/// the process's current directory to its own home directory
+	/// (Program.cs, Directory.SetCurrentDirectory(SharedInfo.HomeDirectory))
+	/// during startup, before any plugin loads - unlike AppContext.
+	/// BaseDirectory, that also resolves correctly for a single-file
+	/// publish of ASF.
+	/// </summary>
 	private static readonly string DataDirectory = Path.Combine(
-		Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".",
-		"data"
+		Directory.GetCurrentDirectory(),
+		SharedInfo.ConfigDirectory,
+		"plugins",
+		nameof(FreeLicenseCleanerPlugin)
 	);
 
 	public string Name => nameof(FreeLicenseCleanerPlugin);
@@ -86,11 +112,64 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 	public string RepositoryName => "satan007/ASF-FreeLicenseCleaner";
 
 	public Task OnLoaded() {
+		MigrateLegacyDataDirectory();
+
 		ASF.ArchiLogger.LogGenericInfo(
 			$"{nameof(FreeLicenseCleanerPlugin)} loaded. Enable it per-bot with \"{ConfigKeys.Enabled}\": true in that bot's config."
 		);
 
 		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	/// One-time upgrade path from pre-0.0.9 versions, which stored state
+	/// under a "data" subfolder inside this plugin's OWN folder - see the
+	/// comment on <see cref="DataDirectory"/> for why that was unsafe.
+	/// Best-effort only: if an ASF update cycle already ran since
+	/// upgrading, the old files are gone from disk and there is nothing
+	/// left here to recover (see the "_old" backup directory ASF itself
+	/// creates during an update, which is only kept until the NEXT update
+	/// cycle runs, not indefinitely).
+	/// </summary>
+	private static void MigrateLegacyDataDirectory() {
+		if (Directory.Exists(DataDirectory)) {
+			// Either already migrated, or a fresh install with nothing to migrate.
+			return;
+		}
+
+		string? pluginDirectory = Path.GetDirectoryName(typeof(FreeLicenseCleanerPlugin).Assembly.Location);
+
+		if (string.IsNullOrEmpty(pluginDirectory)) {
+			return;
+		}
+
+		string legacyDataDirectory = Path.Combine(pluginDirectory, "data");
+
+		if (!Directory.Exists(legacyDataDirectory)) {
+			return;
+		}
+
+		try {
+			Directory.CreateDirectory(DataDirectory);
+
+			int migrated = 0;
+
+			foreach (string file in Directory.EnumerateFiles(legacyDataDirectory, "*.json")) {
+				string destination = Path.Combine(DataDirectory, Path.GetFileName(file));
+
+				if (!File.Exists(destination)) {
+					File.Copy(file, destination);
+
+					migrated++;
+				}
+			}
+
+			if (migrated > 0) {
+				ASF.ArchiLogger.LogGenericInfo($"{nameof(FreeLicenseCleanerPlugin)} migrated {migrated} saved state file(s) from the old, unsafe in-plugin-folder location to {DataDirectory}.");
+			}
+		} catch (Exception e) {
+			ASF.ArchiLogger.LogGenericException(e);
+		}
 	}
 
 	public Task OnASFInit(IReadOnlyDictionary<string, JsonElement>? additionalConfigProperties = null) => Task.CompletedTask;
