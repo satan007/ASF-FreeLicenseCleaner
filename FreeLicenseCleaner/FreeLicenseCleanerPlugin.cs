@@ -6,6 +6,7 @@ using System.Composition;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ArchiSteamFarm;
 using ArchiSteamFarm.Core;
 using ArchiSteamFarm.Plugins.Interfaces;
 using ArchiSteamFarm.Steam;
