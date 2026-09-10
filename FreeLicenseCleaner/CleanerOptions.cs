@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace FreeLicenseCleaner;
 
 /// <summary>
@@ -7,6 +9,14 @@ namespace FreeLicenseCleaner;
 /// </summary>
 internal sealed class CleanerOptions {
 	public bool DryRun { get; set; } = true;
+
+	/// <summary>
+	/// SubIDs that must never be removed, even if Steam reports them as
+	/// a removable free license. Checked on every pending item, not just
+	/// during scanning, so adding one here also protects a SubID already
+	/// queued from an earlier scan.
+	/// </summary>
+	public HashSet<uint> ExcludeSubIds { get; set; } = new();
 
 	/// <summary>Retries allowed for a SubID before it's permanently marked as failed.</summary>
 	public int MaxAttempts { get; set; } = 5;

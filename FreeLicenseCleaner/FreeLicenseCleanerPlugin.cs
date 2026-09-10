@@ -33,11 +33,14 @@ namespace FreeLicenseCleaner;
 ///   "FreeLicenseCleanerFullScanIntervalMinutes": 1440
 ///   "FreeLicenseCleanerStorePageDelayMilliseconds": 500
 ///   "FreeLicenseCleanerMaxStorePages": 1000
+///   "FreeLicenseCleanerExcludeSubIds": [12345, 67890]
 /// Anything omitted keeps its default from <see cref="CleanerOptions"/>.
 ///
 /// Bot commands (Master access, same as native rmlicense):
-///   flc status   - show current queue counters and effective settings
-///   flc scan     - trigger an immediate full Steam scan
+///   flc status       - show current queue counters and effective settings
+///   flc scan         - trigger an immediate full Steam scan
+///   flc list         - show actual SubIDs/names per bucket (pending/invalid/excluded/failed)
+///   flc retry subid  - move one SubID back to pending regardless of its current status
 ///
 /// Implements IGitHubPluginUpdates so ASF checks this plugin for updates
 /// the same way it checks itself (on ASF's usual update schedule, plus
@@ -60,6 +63,7 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 		public const string FullScanIntervalMinutes = "FreeLicenseCleanerFullScanIntervalMinutes";
 		public const string StorePageDelayMilliseconds = "FreeLicenseCleanerStorePageDelayMilliseconds";
 		public const string MaxStorePages = "FreeLicenseCleanerMaxStorePages";
+		public const string ExcludeSubIds = "FreeLicenseCleanerExcludeSubIds";
 	}
 
 	private static readonly ConcurrentDictionary<Bot, CleanerWorker> Workers = new();
@@ -106,6 +110,7 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 			ApplyInt(additionalConfigProperties, ConfigKeys.FullScanIntervalMinutes, bot, value => options.FullScanIntervalMinutes = value);
 			ApplyInt(additionalConfigProperties, ConfigKeys.StorePageDelayMilliseconds, bot, value => options.StorePageDelayMilliseconds = value);
 			ApplyInt(additionalConfigProperties, ConfigKeys.MaxStorePages, bot, value => options.MaxStorePages = value);
+			ApplyUintSet(additionalConfigProperties, ConfigKeys.ExcludeSubIds, bot, value => options.ExcludeSubIds = value);
 		}
 
 		// Stop a worker left over from a previous init (e.g. config reload)
@@ -160,8 +165,18 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 		return action switch {
 			"STATUS" => worker.GetStatusText(),
 			"SCAN" => await worker.TriggerFullScanAsync().ConfigureAwait(false),
-			_ => "Usage: flc <status|scan>"
+			"LIST" => worker.GetListText(),
+			"RETRY" => HandleRetry(worker, args),
+			_ => "Usage: flc <status|scan|list|retry <subid>>"
 		};
+	}
+
+	private static string HandleRetry(CleanerWorker worker, string[] args) {
+		if ((args.Length < 3) || !uint.TryParse(args[2], out uint subID)) {
+			return "Usage: flc retry <subid>";
+		}
+
+		return worker.RetrySubId(subID);
 	}
 
 	private static void ApplyBool(IReadOnlyDictionary<string, JsonElement> properties, string key, Action<bool> setter) {
@@ -182,5 +197,31 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 		}
 
 		setter(value);
+	}
+
+	private static void ApplyUintSet(IReadOnlyDictionary<string, JsonElement> properties, string key, Bot bot, Action<HashSet<uint>> setter) {
+		if (!properties.TryGetValue(key, out JsonElement element)) {
+			return;
+		}
+
+		if (element.ValueKind != JsonValueKind.Array) {
+			bot.ArchiLogger.LogGenericWarning($"Ignoring invalid value for \"{key}\" - expected an array of numbers, keeping the default.");
+
+			return;
+		}
+
+		HashSet<uint> values = new();
+
+		foreach (JsonElement item in element.EnumerateArray()) {
+			if ((item.ValueKind != JsonValueKind.Number) || !item.TryGetUInt32(out uint value)) {
+				bot.ArchiLogger.LogGenericWarning($"Ignoring invalid entry in \"{key}\" - expected a non-negative integer.");
+
+				continue;
+			}
+
+			values.Add(value);
+		}
+
+		setter(values);
 	}
 }

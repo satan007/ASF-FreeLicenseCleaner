@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -74,6 +75,8 @@ internal sealed partial class CleanerWorker : IDisposable {
 			+ $"processed={Count(LicenseStatus.Processed)} | "
 			+ $"duplicate={Count(LicenseStatus.Duplicate)} | "
 			+ $"invalid_state={Count(LicenseStatus.InvalidState)} | "
+			+ $"invalid_param={Count(LicenseStatus.InvalidParam)} | "
+			+ $"excluded={Count(LicenseStatus.Excluded)} | "
 			+ $"failed_max_attempts={Count(LicenseStatus.FailedMaxAttempts)} | "
 			+ $"MaxAttempts={_options.MaxAttempts} | "
 			+ $"SuccessDelay={_options.SuccessDelaySeconds}s | "
@@ -81,6 +84,55 @@ internal sealed partial class CleanerWorker : IDisposable {
 			+ $"ErrorDelay={_options.ErrorDelaySeconds}s | "
 			+ $"IdleDelay={_options.IdleDelaySeconds}s | "
 			+ $"FullScanInterval={_options.FullScanIntervalMinutes}min";
+	}
+
+	/// <summary>"flc list" - shows actual SubIDs/names, not just counts, for every non-pending bucket plus a capped preview of pending.</summary>
+	internal string GetListText() {
+		const int pendingPreview = 15;
+		const int terminalPreview = 20;
+
+		StringBuilder sb = new();
+
+		void AppendSection(string label, LicenseStatus status, int limit) {
+			List<(uint SubID, LicenseRecord Record)> items = _state.GetByStatus(status, limit + 1);
+
+			if (items.Count == 0) {
+				return;
+			}
+
+			bool truncated = items.Count > limit;
+
+			if (truncated) {
+				items.RemoveAt(items.Count - 1);
+			}
+
+			sb.Append(label).Append(" (").Append(items.Count);
+
+			if (truncated) {
+				sb.Append('+');
+			}
+
+			sb.Append("): ");
+
+			sb.AppendJoin(", ", items.Select(item => $"{item.SubID} ({item.Record.Name})"));
+
+			sb.Append('\n');
+		}
+
+		AppendSection("Pending", LicenseStatus.Pending, pendingPreview);
+		AppendSection("Invalid state", LicenseStatus.InvalidState, terminalPreview);
+		AppendSection("Invalid param", LicenseStatus.InvalidParam, terminalPreview);
+		AppendSection("Excluded", LicenseStatus.Excluded, terminalPreview);
+		AppendSection("Failed (max attempts)", LicenseStatus.FailedMaxAttempts, terminalPreview);
+
+		return sb.Length > 0 ? sb.ToString().TrimEnd('\n') : "Nothing tracked yet - run \"flc scan\" first.";
+	}
+
+	/// <summary>"flc retry &lt;subid&gt;" - manually re-queues a SubID regardless of its current status.</summary>
+	internal string RetrySubId(uint subID) {
+		return _state.ResetToPending(subID)
+			? $"SubID {subID} reset to pending and will be retried."
+			: $"SubID {subID} is not tracked - run \"flc scan\" first, or check the ID.";
 	}
 
 	internal async Task<string> TriggerFullScanAsync() {
@@ -140,6 +192,18 @@ internal sealed partial class CleanerWorker : IDisposable {
 
 		(uint subID, LicenseRecord record) = next.Value;
 
+		// Checked ahead of everything else, including attempts already
+		// spent: an operator-excluded SubID is never sent, no matter how
+		// it got into the queue (fresh scan, or already pending from
+		// before the exclude list existed).
+		if (_options.ExcludeSubIds.Contains(subID)) {
+			_state.MarkAttempt(subID, LicenseStatus.Excluded, "excluded by configuration", true);
+
+			_bot.ArchiLogger.LogGenericInfo($"SubID {subID} ({record.Name}) is excluded by configuration and will not be removed.");
+
+			return TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
+		}
+
 		// Safety net: a SubID that keeps returning a status we don't
 		// recognise as terminal would otherwise stay 'pending' forever and
 		// block every other SubID queued behind it (this is exactly what
@@ -193,6 +257,17 @@ internal sealed partial class CleanerWorker : IDisposable {
 				// sub/43301) - Steam consistently refuses to remove it, so
 				// retrying is pointless.
 				_state.MarkAttempt(subID, LicenseStatus.InvalidState, result.ToString(), true);
+
+				return TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
+
+			case EResult.InvalidParam:
+				// Terminal, same reasoning as InvalidState: observed in
+				// production to repeat indefinitely for specific SubIDs
+				// (e.g. sub/105231, sub/105234) rather than being a
+				// transient failure, so retrying wastes MaxAttempts
+				// cycles - each with a possible RateLimitExceeded wait in
+				// between - for no benefit.
+				_state.MarkAttempt(subID, LicenseStatus.InvalidParam, result.ToString(), true);
 
 				return TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
 

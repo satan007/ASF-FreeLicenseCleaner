@@ -17,13 +17,17 @@
   `SteamKit2.EResult` — без парсинга текста регулярками;
 - по одной лицензии за раз, с паузами: 30 сек после успеха/дубликата/
   invalid state, 660 сек после `RateLimitExceeded`;
-- `InvalidState` — терминальный статус, лицензия помечается и больше не
-  трогается (Steam стабильно отказывает на некоторых sub'ах — ретраить их
-  бессмысленно); есть общий предохранитель `MaxAttempts = 5` на случай ещё
-  каких-то статусов, чтобы один "залипший" SubID не блокировал всю
-  очередь навсегда;
-- состояние (pending/processed/duplicate/invalid_state/failed) хранится в
-  JSON-файле на бота: `plugins/FreeLicenseCleaner/data/<BotName>.json`;
+- `InvalidState`/`InvalidParam` — терминальные статусы, лицензия
+  помечается и больше не трогается (Steam стабильно отказывает на
+  некоторых sub'ах — ретраить их бессмысленно); есть общий предохранитель
+  `MaxAttempts = 5` на случай ещё каких-то статусов, чтобы один "залипший"
+  SubID не блокировал всю очередь навсегда;
+- можно защитить конкретные SubID от удаления списком исключений
+  (`FreeLicenseCleanerExcludeSubIds`) — на случай, если среди
+  "удаляемых" Steam окажется что-то, что вы хотите оставить;
+- состояние (pending/processed/duplicate/invalid_state/invalid_param/
+  excluded/failed) хранится в JSON-файле на бота:
+  `plugins/FreeLicenseCleaner/data/<BotName>.json`;
 - умеет автообновляться из GitHub Releases этого репозитория
   (`IGitHubPluginUpdates`) — так же, как это делают другие плагины ASF:
   ASF сам проверяет новые версии по своему обычному расписанию
@@ -78,7 +82,7 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
   После пуша тега workflow [`Release`](.github/workflows/release.yml) сам
   соберёт Release-конфигурацию и прикрепит `FreeLicenseCleaner.zip` (уже
   пригодный для `<ASF>/plugins/FreeLicenseCleaner/`) к новому GitHub
-  Release. Версия сейчас `0.0.5` — подтверждено, что плагин реально
+  Release. Версия сейчас `0.0.6` — подтверждено, что плагин реально
   сканирует и удаляет лицензии на живом боте, но пока это была лишь
   ограниченная обкатка, так что до `1.0.0` ещё рано.
 
@@ -142,7 +146,8 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
 	"FreeLicenseCleanerIdleDelaySeconds": 300,
 	"FreeLicenseCleanerFullScanIntervalMinutes": 1440,
 	"FreeLicenseCleanerStorePageDelayMilliseconds": 500,
-	"FreeLicenseCleanerMaxStorePages": 1000
+	"FreeLicenseCleanerMaxStorePages": 1000,
+	"FreeLicenseCleanerExcludeSubIds": [12345, 67890]
 }
 ```
 
@@ -162,6 +167,7 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
 | `FreeLicenseCleanerFullScanIntervalMinutes` | `1440` | Как часто пересканировать всю страницу лицензий заново |
 | `FreeLicenseCleanerStorePageDelayMilliseconds` | `500` | Пауза между запросами страниц пагинации во время полного скана |
 | `FreeLicenseCleanerMaxStorePages` | `1000` | Предохранитель — максимум страниц пагинации за один скан |
+| `FreeLicenseCleanerExcludeSubIds` | `[]` | SubID, которые никогда не будут удалены, даже если Steam помечает их как удаляемые |
 
 `FreeLicenseCleanerDryRun` по умолчанию `true` — проверьте лог/`flc status`
 и только потом ставьте `false`.
@@ -173,8 +179,12 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
 Нужен Master-доступ — как и у нативного `rmlicense`.
 
 ```
-flc status   — счётчики очереди + текущие действующие настройки
-flc scan     — немедленный полный пересканинг licenses-страницы
+flc status       — счётчики очереди + текущие действующие настройки
+flc scan         — немедленный полный пересканинг licenses-страницы
+flc list         — реальные SubID/имена по каждой корзине (pending/invalid/excluded/failed),
+                    не только счётчики
+flc retry subid  — вернуть конкретный SubID в pending вне зависимости от текущего статуса
+                    (сбрасывает счётчик попыток)
 ```
 
 ## Лицензия

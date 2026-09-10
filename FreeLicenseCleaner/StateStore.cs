@@ -155,4 +155,38 @@ internal sealed class StateStore {
 				.ToDictionary(group => group.Key, group => group.Count());
 		}
 	}
+
+	/// <summary>SubIDs with the given status, smallest first, for "flc list".</summary>
+	internal List<(uint SubID, LicenseRecord Record)> GetByStatus(LicenseStatus status, int? limit = null) {
+		lock (_lock) {
+			IEnumerable<KeyValuePair<uint, LicenseRecord>> query = _state.Licenses
+				.Where(pair => pair.Value.Status == status)
+				.OrderBy(pair => pair.Key);
+
+			if (limit.HasValue) {
+				query = query.Take(limit.Value);
+			}
+
+			return query.Select(pair => (pair.Key, pair.Value)).ToList();
+		}
+	}
+
+	/// <summary>
+	/// Moves a tracked SubID back to 'pending' and clears its attempt
+	/// count, regardless of its current status - for "flc retry".
+	/// </summary>
+	internal bool ResetToPending(uint subID) {
+		lock (_lock) {
+			if (!_state.Licenses.TryGetValue(subID, out LicenseRecord? record)) {
+				return false;
+			}
+
+			record.Status = LicenseStatus.Pending;
+			record.Attempts = 0;
+
+			SaveUnlocked();
+
+			return true;
+		}
+	}
 }

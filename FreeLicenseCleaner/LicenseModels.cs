@@ -12,6 +12,8 @@ internal enum LicenseStatus {
 	Processed,
 	Duplicate,
 	InvalidState,
+	InvalidParam,
+	Excluded,
 	FailedMaxAttempts
 }
 
