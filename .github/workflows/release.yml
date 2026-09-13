@@ -15,6 +15,15 @@ on:
     tags:
       - '*.*.*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Bare release tag to create from scratch (no "v" prefix), e.g.
+          "0.0.11". Use this path (instead of pushing/creating the tag
+          by hand first) when GitHub's own API is flaking on releases
+          that already exist for a tag - this creates the tag AND the
+          release together, with nothing pre-existing to collide with.
+        required: true
 
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -72,3 +81,10 @@ jobs:
           # retry (unrelated to anything in this repo/workflow) - dropped
           # to stop that single call from taking the whole release down.
           generate_release_notes: false
+          # On a manual (workflow_dispatch) run, create the tag+release
+          # from scratch instead of deriving them from GITHUB_REF - lets
+          # this run past a pre-existing release for the tag reliably
+          # failing "fetch by tag" with a bare HttpError, observed
+          # in production regardless of generate_release_notes.
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+          target_commitish: ${{ github.event_name == 'workflow_dispatch' && github.sha || '' }}
