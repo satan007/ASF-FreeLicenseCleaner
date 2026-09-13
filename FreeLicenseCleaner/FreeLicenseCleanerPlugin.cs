@@ -126,11 +126,19 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 	/// One-time upgrade path from pre-0.0.9 versions, which stored state
 	/// under a "data" subfolder inside this plugin's OWN folder - see the
 	/// comment on <see cref="DataDirectory"/> for why that was unsafe.
-	/// Best-effort only: if an ASF update cycle already ran since
-	/// upgrading, the old files are gone from disk and there is nothing
-	/// left here to recover (see the "_old" backup directory ASF itself
-	/// creates during an update, which is only kept until the NEXT update
-	/// cycle runs, not indefinitely).
+	/// Checks two candidate locations, both relative to this assembly's
+	/// own folder:
+	///   1. "data" directly - covers a manual copy/build upgrade, where
+	///      nothing ever moved the old folder around.
+	///   2. "_old/data" - covers the realistic case, an ASF-driven plugin
+	///      auto-update: by the time THIS (new) code is running, ASF's own
+	///      update machinery has already moved the pre-update contents of
+	///      the plugin folder (old "data" included) into "_old" and
+	///      extracted the new release over what's left - see the comment
+	///      on <see cref="DataDirectory"/>.
+	/// Best-effort only: "_old" itself is purged by ASF on the NEXT update
+	/// cycle, so this only helps up to and including the update that
+	/// first installs this fix - not a version bump beyond that.
 	/// </summary>
 	private static void MigrateLegacyDataDirectory() {
 		if (Directory.Exists(DataDirectory)) {
@@ -144,24 +152,28 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 			return;
 		}
 
-		string legacyDataDirectory = Path.Combine(pluginDirectory, "data");
-
-		if (!Directory.Exists(legacyDataDirectory)) {
-			return;
-		}
+		string[] legacyCandidates = [
+			Path.Combine(pluginDirectory, "data"),
+			Path.Combine(pluginDirectory, "_old", "data")
+		];
 
 		try {
-			Directory.CreateDirectory(DataDirectory);
-
 			int migrated = 0;
 
-			foreach (string file in Directory.EnumerateFiles(legacyDataDirectory, "*.json")) {
-				string destination = Path.Combine(DataDirectory, Path.GetFileName(file));
+			foreach (string legacyDataDirectory in legacyCandidates) {
+				if (!Directory.Exists(legacyDataDirectory)) {
+					continue;
+				}
 
-				if (!File.Exists(destination)) {
-					File.Copy(file, destination);
+				foreach (string file in Directory.EnumerateFiles(legacyDataDirectory, "*.json")) {
+					string destination = Path.Combine(DataDirectory, Path.GetFileName(file));
 
-					migrated++;
+					if (!File.Exists(destination)) {
+						Directory.CreateDirectory(DataDirectory);
+						File.Copy(file, destination);
+
+						migrated++;
+					}
 				}
 			}
 
