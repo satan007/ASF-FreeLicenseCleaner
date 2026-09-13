@@ -81,6 +81,14 @@ jobs:
           # retry (unrelated to anything in this repo/workflow) - dropped
           # to stop that single call from taking the whole release down.
           generate_release_notes: false
+          # MUST be a real, non-empty string - with generate_release_notes
+          # off and no body given, softprops/action-gh-release creates the
+          # release with body: null in the raw GitHub API response. ASF's
+          # own ReleaseResponse.MarkdownBody is typed as a non-nullable
+          # string, so a null body crashes ASF's update check for THIS
+          # plugin outright (JsonException, observed in production logs)
+          # on every single check, not just once.
+          body: See ${{ github.server_url }}/${{ github.repository }} for install/upgrade notes.
           # On a manual (workflow_dispatch) run, create the tag+release
           # from scratch instead of deriving them from GITHUB_REF - lets
           # this run past a pre-existing release for the tag reliably
