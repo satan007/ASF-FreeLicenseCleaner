@@ -44,13 +44,23 @@ jobs:
         run: dotnet build FreeLicenseCleaner -c Release -p:ContinuousIntegrationBuild=true -p:UseAppHost=false --nologo
 
       - name: Package plugin output
+        # IMPORTANT: no wrapping "FreeLicenseCleaner/" folder inside the
+        # zip - ASF's plugin auto-update extracts a release zip's raw
+        # contents directly into the plugin's OWN folder (which is
+        # already named/located correctly) and then moves those files
+        # into place preserving whatever internal path the zip had. A
+        # wrapping folder here used to duplicate the plugin's folder name
+        # one level deeper on every single successful auto-update
+        # (plugins/FreeLicenseCleaner/ -> .../FreeLicenseCleaner/FreeLicenseCleaner/
+        # -> ever deeper), observed in production. The zip's files must
+        # sit directly at its root.
         run: |
           set -eu
           out_dir="$(find FreeLicenseCleaner/bin/Release -maxdepth 1 -mindepth 1 -type d | head -n1)"
-          mkdir -p dist/FreeLicenseCleaner
-          cp -r "$out_dir"/. dist/FreeLicenseCleaner/
+          mkdir -p dist
+          cp -r "$out_dir"/. dist/
           cd dist
-          zip -r ../FreeLicenseCleaner.zip FreeLicenseCleaner
+          zip -r ../FreeLicenseCleaner.zip .
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
