@@ -98,9 +98,11 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 	private static readonly string DataDirectory = Path.Combine(
 		Directory.GetCurrentDirectory(),
 		SharedInfo.ConfigDirectory,
-		"plugins",
+		SharedInfo.PluginsDirectory,
 		nameof(FreeLicenseCleanerPlugin)
 	);
+
+	private static bool _unsafeInstallWarned;
 
 	public string Name => nameof(FreeLicenseCleanerPlugin);
 
@@ -112,7 +114,35 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 	// already provides.
 	public string RepositoryName => "satan007/ASF-FreeLicenseCleaner";
 
+	/// <summary>
+	/// ASF applies a plugin update by treating the directory this plugin's
+	/// OWN assembly lives in as belonging entirely to this plugin (see the
+	/// comment on <see cref="DataDirectory"/>). If that directory is the
+	/// SHARED "plugins" folder itself - which happens if this plugin was
+	/// ever unzipped directly into it instead of its own subfolder - an
+	/// update would sweep every OTHER installed plugin's files into a
+	/// backup directory too, as collateral damage, without restoring them
+	/// (observed in practice: other plugins ended up in plugins/_old/,
+	/// their own plugins/&lt;Name&gt;/ left empty). Refusing to update in
+	/// that state is far cheaper than risking it again.
+	/// </summary>
+	public bool CanUpdate {
+		get {
+			if (!IsInstalledDirectlyInSharedPluginsFolder()) {
+				return true;
+			}
+
+			WarnAboutUnsafeInstallLocationOnce();
+
+			return false;
+		}
+	}
+
 	public Task OnLoaded() {
+		if (IsInstalledDirectlyInSharedPluginsFolder()) {
+			WarnAboutUnsafeInstallLocationOnce();
+		}
+
 		MigrateLegacyDataDirectory();
 
 		ASF.ArchiLogger.LogGenericInfo(
@@ -120,6 +150,29 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 		);
 
 		return Task.CompletedTask;
+	}
+
+	private static bool IsInstalledDirectlyInSharedPluginsFolder() {
+		string? assemblyDirectory = Path.GetDirectoryName(typeof(FreeLicenseCleanerPlugin).Assembly.Location);
+		string? directoryName = string.IsNullOrEmpty(assemblyDirectory) ? null : Path.GetFileName(assemblyDirectory);
+
+		return string.Equals(directoryName, SharedInfo.PluginsDirectory, StringComparison.Ordinal);
+	}
+
+	private static void WarnAboutUnsafeInstallLocationOnce() {
+		if (_unsafeInstallWarned) {
+			return;
+		}
+
+		_unsafeInstallWarned = true;
+
+		ASF.ArchiLogger.LogGenericError(
+			$"{nameof(FreeLicenseCleanerPlugin)} is installed directly in the shared \"{SharedInfo.PluginsDirectory}\" folder, not in its own subfolder. " +
+			$"ASF's plugin auto-update applies an update by treating the ENTIRE folder this plugin's assembly lives in as belonging to this plugin - " +
+			$"in this state that is the whole shared plugins folder, so an update would move every OTHER installed plugin's files out of the way too. " +
+			$"Auto-update for this plugin is disabled until this is fixed: move its files into their own subfolder " +
+			$"(e.g. \"{SharedInfo.PluginsDirectory}/FreeLicenseCleaner/\") and restart ASF."
+		);
 	}
 
 	/// <summary>
