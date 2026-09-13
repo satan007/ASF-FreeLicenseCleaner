@@ -98,9 +98,14 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 	private static readonly string DataDirectory = Path.Combine(
 		Directory.GetCurrentDirectory(),
 		SharedInfo.ConfigDirectory,
-		SharedInfo.PluginsDirectory,
+		PluginsFolderName,
 		nameof(FreeLicenseCleanerPlugin)
 	);
+
+	// ArchiSteamFarm.SharedInfo.PluginsDirectory (also "plugins") is
+	// internal, not public like ConfigDirectory - can't reference it from
+	// here, so it's duplicated as a literal instead.
+	private const string PluginsFolderName = "plugins";
 
 	private static bool _unsafeInstallWarned;
 
@@ -156,7 +161,7 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 		string? assemblyDirectory = Path.GetDirectoryName(typeof(FreeLicenseCleanerPlugin).Assembly.Location);
 		string? directoryName = string.IsNullOrEmpty(assemblyDirectory) ? null : Path.GetFileName(assemblyDirectory);
 
-		return string.Equals(directoryName, SharedInfo.PluginsDirectory, StringComparison.Ordinal);
+		return string.Equals(directoryName, PluginsFolderName, StringComparison.Ordinal);
 	}
 
 	private static void WarnAboutUnsafeInstallLocationOnce() {
@@ -167,11 +172,11 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 		_unsafeInstallWarned = true;
 
 		ASF.ArchiLogger.LogGenericError(
-			$"{nameof(FreeLicenseCleanerPlugin)} is installed directly in the shared \"{SharedInfo.PluginsDirectory}\" folder, not in its own subfolder. " +
+			$"{nameof(FreeLicenseCleanerPlugin)} is installed directly in the shared \"{PluginsFolderName}\" folder, not in its own subfolder. " +
 			$"ASF's plugin auto-update applies an update by treating the ENTIRE folder this plugin's assembly lives in as belonging to this plugin - " +
 			$"in this state that is the whole shared plugins folder, so an update would move every OTHER installed plugin's files out of the way too. " +
 			$"Auto-update for this plugin is disabled until this is fixed: move its files into their own subfolder " +
-			$"(e.g. \"{SharedInfo.PluginsDirectory}/FreeLicenseCleaner/\") and restart ASF."
+			$"(e.g. \"{PluginsFolderName}/FreeLicenseCleaner/\") and restart ASF."
 		);
 	}
 
