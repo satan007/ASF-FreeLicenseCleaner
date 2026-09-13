@@ -66,4 +66,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: FreeLicenseCleaner.zip
-          generate_release_notes: true
+          # generate_release_notes calls GitHub's own "generate release
+          # notes content" REST endpoint, which was observed failing
+          # with a hard 500/502 Server Error from GitHub itself on every
+          # retry (unrelated to anything in this repo/workflow) - dropped
+          # to stop that single call from taking the whole release down.
+          generate_release_notes: false
