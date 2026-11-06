@@ -31,7 +31,10 @@ internal sealed class CleanerOptions {
 	/// <summary>Retries allowed for a SubID before it's permanently marked as failed.</summary>
 	public int MaxAttempts { get; set; } = 5;
 
-	/// <summary>Pause after a successful/duplicate/invalid-state RL result.</summary>
+	/// <summary>Maximum queue entries handled before the normal pause.</summary>
+	public int BatchSize { get; set; } = 1;
+
+	/// <summary>Pause after completing a batch.</summary>
 	public int SuccessDelaySeconds { get; set; } = 30;
 
 	/// <summary>Pause after Steam returns RateLimitExceeded.</summary>

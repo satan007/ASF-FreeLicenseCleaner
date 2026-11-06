@@ -4,7 +4,7 @@
 
 Плагин [ArchiSteamFarm](https://github.com/JustArchiNET/ArchiSteamFarm) (ASF),
 который сам находит и удаляет бесплатные ("on demand") лицензии Steam —
-по одной, с паузами, без внешних скриптов и IPC.
+настраиваемыми сериями, с паузами, без внешних скриптов и IPC.
 
 Работает целиком внутри процесса ASF:
 
@@ -15,8 +15,12 @@
   публичный API самой ASF (та же функция, что стоит за встроенной командой
   `rmlicense`/`RL`, начиная с ASF 6.1.7.8), который сразу отдаёт
   `SteamKit2.EResult` — без парсинга текста регулярками;
-- по одной лицензии за раз, с паузами: 30 сек после успеха/дубликата/
-  invalid state, 660 сек после `RateLimitExceeded`;
+- по умолчанию обрабатывает одну запись за цикл. При
+  `FreeLicenseCleanerBatchSize: 3` выполняет до трёх последовательных вызовов
+  удаления без паузы между ними. Каждый вызов относится к одному SubID.
+  В конце серии пишет `removed` (ответы Steam `OK`) и `handled` (записи
+  очереди, включая пропущенные и отклонённые). При `RateLimitExceeded`
+  сразу завершает серию и по умолчанию ждёт 660 сек;
 - `InvalidState`/`InvalidParam` — терминальные статусы, лицензия
   помечается и больше не трогается (Steam стабильно отказывает на
   некоторых sub'ах — ретраить их бессмысленно); есть общий предохранитель
@@ -156,6 +160,7 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
 	"FreeLicenseCleanerEnabled": true,
 	"FreeLicenseCleanerDryRun": true,
 	"FreeLicenseCleanerMaxAttempts": 5,
+	"FreeLicenseCleanerBatchSize": 1,
 	"FreeLicenseCleanerSuccessDelaySeconds": 30,
 	"FreeLicenseCleanerRateLimitDelaySeconds": 660,
 	"FreeLicenseCleanerErrorDelaySeconds": 30,
@@ -179,7 +184,8 @@ JustArchiNET собирает этот же тег через `actions/setup-dot
 | `FreeLicenseCleanerEnabled` | `false` | Включить плагин для этого бота |
 | `FreeLicenseCleanerDryRun` | `true` | Только логировать, что было бы удалено, ничего не трогая |
 | `FreeLicenseCleanerMaxAttempts` | `5` | Сколько раз ретраить SubID с непонятным статусом, прежде чем навсегда пометить как failed |
-| `FreeLicenseCleanerSuccessDelaySeconds` | `30` | Пауза после успеха / дубликата / invalid_state |
+| `FreeLicenseCleanerBatchSize` | `1` | Сколько записей обработать за серию. Для первого реального теста можно выставить `3` |
+| `FreeLicenseCleanerSuccessDelaySeconds` | `30` | Пауза после завершения серии |
 | `FreeLicenseCleanerRateLimitDelaySeconds` | `660` | Пауза после `RateLimitExceeded` от Steam |
 | `FreeLicenseCleanerErrorDelaySeconds` | `30` | Пауза после сетевой ошибки / нераспознанного статуса |
 | `FreeLicenseCleanerIdleDelaySeconds` | `300` | Пауза, когда очередь пуста и полный скан пока не нужен |

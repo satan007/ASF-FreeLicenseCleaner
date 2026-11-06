@@ -19,8 +19,8 @@ namespace FreeLicenseCleaner;
 
 /// <summary>
 /// One background loop per bot. Ports the standalone Python script's
-/// architecture (full Steam scan -> persisted queue -> one throttled RL
-/// request at a time) to run natively inside the ASF process, using
+/// architecture (full Steam scan -> persisted queue -> throttled RL
+/// requests) to run natively inside the ASF process, using
 /// Bot.Actions.RemoveLicensePackage() and Bot.ArchiWebHandler directly
 /// instead of going through ASF's own IPC/console text output.
 ///
@@ -183,7 +183,7 @@ internal sealed partial class CleanerWorker : IDisposable {
 						await RefreshPlaytimeProtectionAsync().ConfigureAwait(false);
 					}
 
-					delay = await ProcessOnePendingAsync().ConfigureAwait(false);
+					delay = await ProcessBatchAsync(cancellationToken).ConfigureAwait(false);
 				}
 			} catch (OperationCanceledException) {
 				break;
@@ -203,15 +203,50 @@ internal sealed partial class CleanerWorker : IDisposable {
 		_bot.ArchiLogger.LogGenericInfo("Free License Cleaner loop stopped.");
 	}
 
-	private async Task<TimeSpan> ProcessOnePendingAsync() {
-		(uint SubID, LicenseRecord Record)? next = _state.GetNextPending();
+	private async Task<TimeSpan> ProcessBatchAsync(CancellationToken cancellationToken) {
+		// Dry run keeps the existing one-item preview without changing the queue.
+		int batchSize = _options.DryRun ? 1 : _options.BatchSize;
+		int handled = 0;
+		int removed = 0;
+		TimeSpan delay = TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
 
-		if (next == null) {
-			return TimeSpan.FromSeconds(_options.IdleDelaySeconds);
+		while (handled < batchSize) {
+			cancellationToken.ThrowIfCancellationRequested();
+
+			if (!_bot.IsConnectedAndLoggedOn) {
+				delay = TimeSpan.FromSeconds(_options.ErrorDelaySeconds);
+				break;
+			}
+
+			if (_state.GetNextPending() is not { } next) {
+				if (handled == 0) {
+					delay = TimeSpan.FromSeconds(_options.IdleDelaySeconds);
+				}
+
+				break;
+			}
+
+			(TimeSpan? stopDelay, bool wasRemoved) = await ProcessPendingAsync(next.SubID, next.Record).ConfigureAwait(false);
+			handled++;
+
+			if (wasRemoved) {
+				removed++;
+			}
+
+			if (stopDelay.HasValue) {
+				delay = stopDelay.Value;
+				break;
+			}
 		}
 
-		(uint subID, LicenseRecord record) = next.Value;
+		if ((batchSize > 1) && (handled > 0)) {
+			_bot.ArchiLogger.LogGenericInfo($"License batch: removed={removed}, handled={handled}, batchSize={batchSize}, nextDelay={delay.TotalSeconds}s.");
+		}
 
+		return delay;
+	}
+
+	private async Task<(TimeSpan? StopDelay, bool Removed)> ProcessPendingAsync(uint subID, LicenseRecord record) {
 		// Checked ahead of everything else, including attempts already
 		// spent: an operator-excluded SubID is never sent, no matter how
 		// it got into the queue (fresh scan, or already pending from
@@ -221,7 +256,7 @@ internal sealed partial class CleanerWorker : IDisposable {
 
 			_bot.ArchiLogger.LogGenericInfo($"SubID {subID} ({record.Name}) is excluded by configuration and will not be removed.");
 
-			return TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
+			return (null, false);
 		}
 
 		// Safety net: a SubID that keeps returning a status we don't
@@ -236,13 +271,13 @@ internal sealed partial class CleanerWorker : IDisposable {
 				$"SubID {subID} exceeded {_options.MaxAttempts} attempts without a terminal result. Marked as failed and will not be retried."
 			);
 
-			return TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
+			return (null, false);
 		}
 
 		if (_options.DryRun) {
 			_bot.ArchiLogger.LogGenericInfo($"[DryRun] Would remove sub/{subID} ({record.Name}).");
 
-			return TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
+			return (null, false);
 		}
 
 		_bot.ArchiLogger.LogGenericInfo($"Removing sub/{subID} ({record.Name})...");
@@ -255,7 +290,7 @@ internal sealed partial class CleanerWorker : IDisposable {
 			_bot.ArchiLogger.LogGenericException(e);
 			_state.MarkAttempt(subID, LicenseStatus.Pending, e.Message, false);
 
-			return TimeSpan.FromSeconds(_options.ErrorDelaySeconds);
+			return (TimeSpan.FromSeconds(_options.ErrorDelaySeconds), false);
 		}
 
 		_bot.ArchiLogger.LogGenericInfo($"SubID {subID} -> {result}");
@@ -264,12 +299,12 @@ internal sealed partial class CleanerWorker : IDisposable {
 			case EResult.OK:
 				_state.MarkAttempt(subID, LicenseStatus.Processed, result.ToString(), true);
 
-				return TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
+				return (null, true);
 
 			case EResult.DuplicateRequest:
 				_state.MarkAttempt(subID, LicenseStatus.Duplicate, result.ToString(), true);
 
-				return TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
+				return (null, false);
 
 			case EResult.InvalidState:
 				// Terminal: this is what previously caused the standalone
@@ -278,7 +313,7 @@ internal sealed partial class CleanerWorker : IDisposable {
 				// retrying is pointless.
 				_state.MarkAttempt(subID, LicenseStatus.InvalidState, result.ToString(), true);
 
-				return TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
+				return (null, false);
 
 			case EResult.InvalidParam:
 				// Terminal, same reasoning as InvalidState: observed in
@@ -289,13 +324,13 @@ internal sealed partial class CleanerWorker : IDisposable {
 				// between - for no benefit.
 				_state.MarkAttempt(subID, LicenseStatus.InvalidParam, result.ToString(), true);
 
-				return TimeSpan.FromSeconds(_options.SuccessDelaySeconds);
+				return (null, false);
 
 			case EResult.RateLimitExceeded:
-				_state.MarkAttempt(subID, LicenseStatus.Pending, result.ToString(), false);
+				_state.MarkAttempt(subID, LicenseStatus.Pending, result.ToString(), false, countAttempt: false);
 				_bot.ArchiLogger.LogGenericWarning($"RateLimitExceeded for SubID {subID}.");
 
-				return TimeSpan.FromSeconds(_options.RateLimitDelaySeconds);
+				return (TimeSpan.FromSeconds(_options.RateLimitDelaySeconds), false);
 
 			default:
 				// record is the same LicenseRecord instance stored in
@@ -309,7 +344,7 @@ internal sealed partial class CleanerWorker : IDisposable {
 					$"Unrecognised RemoveLicense result for SubID {subID}: {result} (attempt {record.Attempts}/{_options.MaxAttempts})"
 				);
 
-				return TimeSpan.FromSeconds(_options.ErrorDelaySeconds);
+				return (TimeSpan.FromSeconds(_options.ErrorDelaySeconds), false);
 		}
 	}
 

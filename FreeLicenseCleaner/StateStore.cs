@@ -133,13 +133,16 @@ internal sealed class StateStore {
 	/// is false the SubID stays 'pending' so it will be retried later
 	/// (bounded by CleanerWorker.MaxAttempts).
 	/// </summary>
-	internal void MarkAttempt(uint subID, LicenseStatus status, string? resultText, bool terminal) {
+	internal void MarkAttempt(uint subID, LicenseStatus status, string? resultText, bool terminal, bool countAttempt = true) {
 		lock (_lock) {
 			if (!_state.Licenses.TryGetValue(subID, out LicenseRecord? record)) {
 				return;
 			}
 
-			record.Attempts++;
+			if (countAttempt) {
+				record.Attempts++;
+			}
+
 			record.LastAttemptUtc = DateTime.UtcNow;
 			record.LastResult = resultText;
 			record.Status = terminal ? status : LicenseStatus.Pending;
