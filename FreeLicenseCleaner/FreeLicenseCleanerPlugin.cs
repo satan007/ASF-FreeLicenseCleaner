@@ -17,8 +17,8 @@ namespace FreeLicenseCleaner;
 /// Entry point. Per bot, this plugin is a native replacement for the
 /// standalone Python script + ASFEnhance's COOKIES/RL commands: it uses
 /// Bot.ArchiWebHandler (already authenticated) to scan the Steam licenses
-/// page, and Bot.Actions.RemoveLicensePackage() to remove them, one at a
-/// time on a timer, exactly like the original script did over IPC.
+/// page, and Bot.Actions.RemoveLicensePackage() to remove them in
+/// configurable batches on a timer, exactly like the original script did over IPC.
 ///
 /// Every knob (see <see cref="ConfigKeys"/>) is opt-in via that bot's own
 /// config file, e.g.:
@@ -26,6 +26,7 @@ namespace FreeLicenseCleaner;
 ///   "FreeLicenseCleanerDryRun": true   (defaults to true - flip to false
 ///                                       only after checking the logs)
 ///   "FreeLicenseCleanerMaxAttempts": 5
+///   "FreeLicenseCleanerBatchSize": 1
 ///   "FreeLicenseCleanerSuccessDelaySeconds": 30
 ///   "FreeLicenseCleanerRateLimitDelaySeconds": 660
 ///   "FreeLicenseCleanerErrorDelaySeconds": 30
@@ -57,6 +58,7 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 		public const string Enabled = "FreeLicenseCleanerEnabled";
 		public const string DryRun = "FreeLicenseCleanerDryRun";
 		public const string MaxAttempts = "FreeLicenseCleanerMaxAttempts";
+		public const string BatchSize = "FreeLicenseCleanerBatchSize";
 		public const string SuccessDelaySeconds = "FreeLicenseCleanerSuccessDelaySeconds";
 		public const string RateLimitDelaySeconds = "FreeLicenseCleanerRateLimitDelaySeconds";
 		public const string ErrorDelaySeconds = "FreeLicenseCleanerErrorDelaySeconds";
@@ -255,6 +257,7 @@ internal sealed class FreeLicenseCleanerPlugin : IASF, IBot, IBotModules, IBotCo
 			ApplyBool(additionalConfigProperties, ConfigKeys.Enabled, value => enabled = value);
 			ApplyBool(additionalConfigProperties, ConfigKeys.DryRun, value => options.DryRun = value);
 			ApplyInt(additionalConfigProperties, ConfigKeys.MaxAttempts, bot, value => options.MaxAttempts = value);
+			ApplyInt(additionalConfigProperties, ConfigKeys.BatchSize, bot, value => options.BatchSize = value);
 			ApplyInt(additionalConfigProperties, ConfigKeys.SuccessDelaySeconds, bot, value => options.SuccessDelaySeconds = value);
 			ApplyInt(additionalConfigProperties, ConfigKeys.RateLimitDelaySeconds, bot, value => options.RateLimitDelaySeconds = value);
 			ApplyInt(additionalConfigProperties, ConfigKeys.ErrorDelaySeconds, bot, value => options.ErrorDelaySeconds = value);
